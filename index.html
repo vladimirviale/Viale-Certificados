@@ -66,6 +66,7 @@ tr:hover td{background:#fff8f5}
 .bg-rojo{background:#ffebee;color:#c62828}
 .bg-azul{background:#e1f5fe;color:#0288d1}
 .bg-gris{background:#eceff1;color:#607d8b}
+.bg-noaplica{background:#f3e5f5;color:#7b1fa2}
 .btn-sm{padding:4px 10px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid var(--naranja);background:#fff;color:var(--naranja);margin-right:3px}
 .btn-sm:hover{background:#fde8df}
 .btn-sm2{padding:4px 10px;font-size:12px;border-radius:4px;cursor:pointer;border:1px solid #999;background:#fff;color:#666}
@@ -180,6 +181,7 @@ input:checked+.sl:before{transform:translateX(20px)}
       <option value="VENCIDO">&#128308; Vencido</option>
       <option value="INDETERMINADO">&#128309; Indeterminado</option>
       <option value="SIN_CERT">Sin certificado</option>
+      <option value="NO_APLICA">&#10060; No aplica</option>
     </select>
     <select id="fTipo" onchange="renderTabla()"><option value="">Todos los tipos</option></select>
     <button class="btn btn-primary" onclick="abrirNuevoCert()">&#10133; Nuevo Certificado</button>
@@ -215,6 +217,10 @@ input:checked+.sl:before{transform:translateX(20px)}
     <div class="sw-row">
       <label class="sw"><input type="checkbox" id="mIndet" onchange="toggleIndet()"><span class="sl"></span></label>
       <span style="font-size:13px">Vigencia <b>Indeterminada</b></span>
+    </div>
+    <div class="sw-row">
+      <label class="sw"><input type="checkbox" id="mNoAplica" onchange="toggleNoAplica()"><span class="sl" style=""></span></label>
+      <span style="font-size:13px">&#10060; <b>No Aplica</b> (certificado no requerido)</span>
     </div>
     <div id="mFechaDiv" class="fg">
       <label>Fecha Vencimiento (DD/MM/AAAA)</label>
@@ -370,9 +376,10 @@ function renderTabla() {
       if (c.diasRestantes < 0) { dias = Math.abs(c.diasRestantes) + 'd venc.'; dstyle = 'color:#c62828;font-weight:700'; }
       else dias = c.diasRestantes + 'd';
     }
-    var fv  = c.estado === 'INDETERMINADO' ? 'Indeterminado' : (c.fechaVencimiento || '-');
+    var fv  = (c.estado === 'INDETERMINADO') ? 'Indeterminado' : (c.estado === 'NO_APLICA') ? 'No aplica' : (c.fechaVencimiento || '-');
     var cls = {verde:'bg-verde',amarillo:'bg-amarillo',naranja:'bg-naranja',rojo:'bg-rojo',azul:'bg-azul',gris:'bg-gris'}[c.semaforo] || 'bg-gris';
-    var lbl = {VIGENTE:'Vigente',POR_VENCER:'Por vencer',CRITICO:'Critico',VENCIDO:'Vencido',INDETERMINADO:'Indeterminado',SIN_CERT:'Sin cert.'}[c.estado] || c.estado;
+    if (c.estado === 'NO_APLICA') cls = 'bg-noaplica';
+    var lbl = {VIGENTE:'Vigente',POR_VENCER:'Por vencer',CRITICO:'Critico',VENCIDO:'Vencido',INDETERMINADO:'Indeterminado',SIN_CERT:'Sin cert.',NO_APLICA:'No aplica'}[c.estado] || c.estado;
     html += '<tr>' +
       '<td><b>' + e(c.tienda) + '</b></td>' +
       '<td>' + e(c.tipo) + '</td>' +
@@ -432,6 +439,7 @@ function abrirNuevoCert() {
   document.getElementById('mProv').value = '';
   document.getElementById('mObs').value = '';
   document.getElementById('mIndet').checked = false;
+  document.getElementById('mNoAplica').checked = false;
   document.getElementById('mFechaDiv').style.display = 'block';
   document.getElementById('mCertTit').textContent = 'Registrar Certificado';
   abrirModal('mCert');
@@ -445,35 +453,88 @@ function editCert(k) {
   document.getElementById('mProv').value = c.proveedor || '';
   document.getElementById('mObs').value  = c.observaciones || '';
   var indet = c.estado === 'INDETERMINADO';
-  document.getElementById('mIndet').checked = indet;
-  document.getElementById('mFechaDiv').style.display = indet ? 'none' : 'block';
-  document.getElementById('mF').value = indet ? '' : (c.fechaVencimiento || '');
+  var noapl = c.estado === 'NO_APLICA';
+  document.getElementById('mIndet').checked   = indet;
+  document.getElementById('mNoAplica').checked = noapl;
+  document.getElementById('mFechaDiv').style.display = (indet || noapl) ? 'none' : 'block';
+  document.getElementById('mF').value = (indet || noapl) ? '' : (c.fechaVencimiento || '');
   document.getElementById('mCertTit').textContent = 'Editar: ' + c.tienda;
   abrirModal('mCert');
 }
 
 function toggleIndet() {
-  document.getElementById('mFechaDiv').style.display =
-    document.getElementById('mIndet').checked ? 'none' : 'block';
+  var indet = document.getElementById('mIndet').checked;
+  if (indet) document.getElementById('mNoAplica').checked = false;
+  actualizarVisibilidadFecha();
+}
+
+function toggleNoAplica() {
+  var noapl = document.getElementById('mNoAplica').checked;
+  if (noapl) document.getElementById('mIndet').checked = false;
+  actualizarVisibilidadFecha();
+}
+
+function actualizarVisibilidadFecha() {
+  var indet = document.getElementById('mIndet').checked;
+  var noapl = document.getElementById('mNoAplica').checked;
+  document.getElementById('mFechaDiv').style.display = (indet || noapl) ? 'none' : 'block';
+}
+
+// Recarga datos desde Apps Script sin recargar la página completa
+function recargarDatos() {
+  // Guardar estado actual de filtros
+  var fT    = document.getElementById('fT').value;
+  var fE    = document.getElementById('fE').value;
+  var fTipo = document.getElementById('fTipo').value;
+  var sc = document.createElement('script');
+  sc.src = APPS_URL + '?callback=onDatosRecargados&t=' + Date.now();
+  window._filtroGuardado = {fT:fT, fE:fE, fTipo:fTipo};
+  document.head.appendChild(sc);
+}
+
+function onDatosRecargados(data) {
+  D = data;
+  actualizarKPIs();
+  renderTabla();
+  // Restaurar filtros
+  if (window._filtroGuardado) {
+    document.getElementById('fT').value    = window._filtroGuardado.fT;
+    document.getElementById('fE').value    = window._filtroGuardado.fE;
+    document.getElementById('fTipo').value = window._filtroGuardado.fTipo;
+    renderTabla();
+    window._filtroGuardado = null;
+  }
 }
 
 function guardarCert() {
   var tienda = document.getElementById('mT').value;
   var tipo   = document.getElementById('mTp').value;
   var indet  = document.getElementById('mIndet').checked;
-  var fecha  = document.getElementById('mF').value;
+  var noapl  = document.getElementById('mNoAplica').checked;
+  var fecha  = document.getElementById('mF').value.trim();
   var prov   = document.getElementById('mProv').value;
   var obs    = document.getElementById('mObs').value;
   if (!tienda || !tipo) { alerta('Selecciona tienda y tipo.', 'err'); return; }
-  if (!indet && !fecha) { alerta('Ingresa fecha o marca Indeterminado.', 'err'); return; }
+  if (!indet && !noapl && !fecha) { alerta('Ingresa fecha, marca Indeterminado o No Aplica.', 'err'); return; }
+  // Limpiar fecha si tiene formato ISO raro
+  if (fecha) {
+    // Si viene como ISO (2026-05-08T...) convertir a DD/MM/AAAA
+    var isoMatch = fecha.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) fecha = isoMatch[3] + '/' + isoMatch[2] + '/' + isoMatch[1];
+  }
+  var estadoEspecial = noapl ? 'NO_APLICA' : (indet ? 'INDETERMINADO' : '');
   fetch(APPS_URL, {
     method: 'POST',
-    body: JSON.stringify({action:'guardar',tienda:tienda,tipo:tipo,fechaVencimiento:fecha,estadoEspecial:indet?'INDETERMINADO':'',proveedor:prov,observaciones:obs})
+    body: JSON.stringify({action:'guardar',tienda:tienda,tipo:tipo,fechaVencimiento:fecha,estadoEspecial:estadoEspecial,proveedor:prov,observaciones:obs})
   })
   .then(function(r){return r.json();})
   .then(function(res){
-    if (res.ok) { cerrarModal('mCert'); alerta(res.mensaje,'ok'); setTimeout(function(){location.reload();},1500); }
-    else { alerta(res.error,'err'); }
+    if (res.ok) {
+      cerrarModal('mCert');
+      alerta(res.mensaje, 'ok');
+      // Recargar datos sin perder filtros
+      recargarDatos();
+    } else { alerta(res.error,'err'); }
   })
   .catch(function(err){ alerta('Error: '+err.message,'err'); });
 }
